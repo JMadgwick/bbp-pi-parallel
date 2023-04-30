@@ -1,5 +1,5 @@
-// Parallel Implementation of the Bailey–Borwein–Plouffe Formula for Pi
-// Copyright (C) 2018 J. Madgwick
+// Parallel Implementation of the Bailey–Borwein–Plouffe Formula for Pi (Improved Program)
+// Copyright (C) 2020 J. Madgwick
 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -18,14 +18,11 @@
 #include <iostream>
 #include <cmath>
 #include <string>
-//for printout accuracy
-#include <limits>
-#include <iomanip>
 //Multithreading
 #include <thread>
 #include <future>
 
-#pragma GCC diagnostic warning "-Wall"//Gives us 'all' warnings, includes avoiding uninitialized varibles, needed for HCC compiler which treats them strangly.
+uint noOfThreads = 1;
 
 //Left-Right Binary algorithm for exponentiation with Modulo 16^n mod k
 double expoMod(double n, double k)
@@ -51,7 +48,7 @@ double expoMod(double n, double k)
     //First set t to be the largest power of two such that t ≤ n, and set r = 1.
     int t = pwrtbl[bitsneeded];
     double r = 1;
-    
+
     //Loop by the number of Binary positions
     for (int i = 0; i <= bitsneeded; i++) 
     {
@@ -75,7 +72,6 @@ double expoMod(double n, double k)
 void leftPortionThreaded(double *threadResult, int k, int j, int d)
 {
   int kinit = k;
-  int termsNo = 0;//Always go from 0-100000 in the terms[] DONT use K!
   double s = 0;
   for (;k < (kinit+100000);k++)
   {
@@ -83,8 +79,7 @@ void leftPortionThreaded(double *threadResult, int k, int j, int d)
     denominator = 8 * k + j;
     numerator = expoMod(d - k, denominator); // Binary algorithm for exponentiation with Modulo must be used becuase otherwise 16^(d-k) can be very large and overflows
     s = s + numerator/denominator;
-    s = s - static_cast<int>(s);
-    termsNo++;
+    s = s - std::floor(s);
   }
   *threadResult = s;
 }
@@ -95,16 +90,15 @@ double bbpf16jsd(int j, int d)
     double s = .0;
     double numerator,denominator;
     double term;
-    int noOfThreads = static_cast<int>(std::thread::hardware_concurrency());
     std::thread *threadArray = new std::thread[noOfThreads];// Array with the number of threads avalible
-    double *threadResults = new double[noOfThreads];// For storing results from threads - note: 'new' is not needed by g++ but is needed for windows
+    double *threadResults = new double[noOfThreads];// For storing results from threads
     //Left Portion
     int k = 0;
     while (k < d)
     {
       if (k + (100000*noOfThreads) < d)//Only make threads for k up to less than d
       {
-        for (int i1 = 0; i1 < noOfThreads;i1++) //create and execute (noOfThreads) threads
+        for (uint i1 = 0; i1 < noOfThreads;i1++) //create and execute (noOfThreads) threads
         {
           threadArray[i1] = std::thread(leftPortionThreaded,&threadResults[i1],k,j,d);
           k = k + 100000; //We need to run 100000 result on each thread because the thread overhead is much to great to run just 1
@@ -115,14 +109,6 @@ double bbpf16jsd(int j, int d)
           s = s + threadResults[i2];
           s = s - static_cast<int>(s);
         }
-        // for (int i3 = 0; i3 < noOfThreads;i3++) //sum up all the terms set by the threads
-        // {
-        //   for (int i4 = 0; i4 < 100000;i4++)
-        //   {
-        //     s = s + terms[i3][i4];
-        //     s = s - static_cast<int>(s);
-        //   }
-        // }
       } else //if we are almost done and k + noOfThreads > d then do the last few terms single threaded
       {
         denominator = 8 * k + j;
@@ -158,24 +144,24 @@ void bbpfCalc(double *pidec,int *place)
 
 void toHex(char *out, double *in) //Note the pointer '*out' points to hexOutput[] (char[]) in main(). Not possible to return char[] in C/C++
 {
-  char hexNumbers[] = "0123456789abcdef";
-  
-  for (int i = 0; i <= 12;i++)
+  char hexNumbers[] = "0123456789ABCDEF";
+
+  for (int i = 0; i <= 8;i++)
   {
     *in = 16.0 * (*in - static_cast<int>(*in));
     out[i] = hexNumbers[static_cast<int>(*in)];
   }
 }
-int main() {
+
+int main(int argc, char *argv[]) {
   std::cout << "Bailey–Borwein–Plouffe Formula for Pi" << std::endl;
   std::cout << "Built: " << __DATE__ << " " << __TIME__ << std::endl << std::endl;
-  std::cout << "Detected (" << std::thread::hardware_concurrency() << ") Threads on CPU" << std::endl << std::endl;
+  int placeNo = (argc >= 2) && (std::atoi(argv[1]) > 0) ? std::atoi(argv[1]) - 1 : 10000000;
+  noOfThreads = (argc >= 3) && (std::atoi(argv[2]) > 0) ? static_cast<uint>(std::atoi(argv[2])) : std::thread::hardware_concurrency();
+  std::cout << "Calculating Position: " << (placeNo + 1) << ", Using " << noOfThreads << " CPU Threads" << std::endl;
   double piArr;
-  int placeArr = 10000000;
-  bbpfCalc(&piArr,&placeArr);  
-  std::cout << "Position: " << placeArr << std::endl;
-  std::cout << "Pi Estimation Decimal: " << std::setprecision (std::numeric_limits<long double>::digits10 + 2) << (piArr) << std::endl;
-  char hexOutput[] = "0000000000000"; //Needs to be initialised else random data is left over at the end once its been filled
+  bbpfCalc(&piArr, &placeNo);
+  char hexOutput[] = "000000000"; //Needs to be initialised else random data is left over at the end once its been filled
   toHex(hexOutput, &piArr);
   std::cout << "Pi Estimation Hex: " << hexOutput << std::endl;
 }

@@ -21,14 +21,9 @@
 //for printout accuracy
 #include <limits>
 #include <iomanip>
-//CPU Multithreading
-#include <thread>
-#include <future>
 //Header files for the hc API
 #include <hcc/hc.hpp>
 #include <hcc/hc_math.hpp>
-
-#pragma GCC diagnostic warning "-Wall"//Gives us 'all' warnings, includes avoiding uninitialized varibles, needed for HCC compiler which treats them strangly.
 
 //Left-Right Binary algorithm for exponentiation with Modulo 16^n mod k
 double expoMod(double n, double k)
@@ -54,7 +49,7 @@ double expoMod(double n, double k)
     //First set t to be the largest power of two such that t ≤ n, and set r = 1.
     int t = pwrtbl[bitsneeded];
     double r = 1;
-    
+
     //Loop by the number of Binary positions
     for (int i = 0; i <= bitsneeded; i++) 
     {
@@ -79,13 +74,13 @@ double leftPortionThreaded(int terms, int k, int j, int d) [[hc]]
 {
   int kinit = k;
   double s = 0;
-  for (;k < (kinit+terms);k++) //Always go from 0-k+terms, DONT use K!
+  for (;k < (kinit+terms);k++)
   {
     double numerator,denominator;
     denominator = 8 * k + j;
     numerator = expoMod(d - k, denominator); // Binary algorithm for exponentiation with Modulo must be used becuase otherwise 16^(d-k) can be very large and overflows
     s = s + numerator/denominator;
-    s = s - static_cast<int>(s); // Can also use 'floor' but no effect on performance
+    s = s - std::floor(s);
   }
   return s;
 }
@@ -96,9 +91,8 @@ double bbpf16jsd(int j, int d)
     double s = .0;
     double numerator,denominator;
     double term;
-    int noOfThreads = 700;//static_cast<int>(std::thread::hardware_concurrency());
+    int noOfThreads = 1400;//For Vega20, 700 was used for Hawaii
     int perThreadRuns = 1000;
-    //std::thread *threadArray = new std::thread[noOfThreads];// Array with the number of threads avalible
     double threadResults[noOfThreads];// For storing results from threads
     std::generate_n(threadResults,noOfThreads,[]() {return (int)0;}); //Fill 
     hc::array_view<double,1> gpu_threadResults(noOfThreads,threadResults);
@@ -117,7 +111,6 @@ double bbpf16jsd(int j, int d)
         k = k + perThreadRuns*noOfThreads; //We need to run (perThreadRuns) results on each thread because the thread overhead is much to great to run just 1
         for (int i2 = noOfThreads-1; i2 > -1;i2--) //fetch results from all threads - count backwards because last thread executed will be slowest (higher numbers)
         {
-          ///threadArray[i2].join();
           s = s + gpu_threadResults[i2];
           s = s - static_cast<int>(s);
         }
@@ -154,16 +147,17 @@ void bbpfCalc(double *pidec,int *place)
     *pidec = result;
   }
 
-void toHex(char *out, double *in) //Note the pointer '*out' points to hexOutput[] (char[]) in main(). Not possible to return char[] in C/C++
+void toHex(char *out, double *in)
 {
-  char hexNumbers[] = "0123456789abcdef";
-  
-  for (int i = 0; i <= 12;i++)
+  char hexNumbers[] = "0123456789ABCDEF";
+
+  for (int i = 0; i <= 8;i++)
   {
     *in = 16.0 * (*in - static_cast<int>(*in));
     out[i] = hexNumbers[static_cast<int>(*in)];
   }
 }
+
 int main() {
   std::cout << "Bailey–Borwein–Plouffe Formula for Pi" << std::endl;
   std::cout << "Built: " << __DATE__ << " " << __TIME__ << " with HCC Version: " << __hcc_major__ << "." << __hcc_minor__ << "." << __hcc_patchlevel__ << std::endl << std::endl;
