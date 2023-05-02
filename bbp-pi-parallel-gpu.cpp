@@ -21,12 +21,12 @@
 //for printout accuracy
 #include <limits>
 #include <iomanip>
-//Header files for the hc API
-#include <hcc/hc.hpp>
-#include <hcc/hc_math.hpp>
+//Header files for the HIP API
+#include <hip/hip_runtime.h>
+#include <hip/hip_runtime_api.h>
 
 //Left-Right Binary algorithm for exponentiation with Modulo 16^n mod k
-double expoMod(double n, double k)
+__host__ __device__ double expoMod(double n, double k)
   {
     static int init = 0;//Store whether table initialised
     static int pwrtbl[32];//table to store powers of 2
@@ -70,7 +70,7 @@ double expoMod(double n, double k)
   }
 
 //Left Portion for one thread - just does one term
-double leftPortionThreaded(int terms, int k, int j, int d) [[hc]]
+__device__ double leftPortionThreaded(int terms, int k, int j, int d)
 {
   int kinit = k;
   double s = 0;
@@ -85,6 +85,12 @@ double leftPortionThreaded(int terms, int k, int j, int d) [[hc]]
   return s;
 }
 
+__global__ void kern(double *gpu_threadResults, int perThreadRuns, int j, int d, int k){
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int k2 = k+(idx*perThreadRuns); //Thread 0 starts at k+0, thread 1 at k+(1*perThreadRuns) &c.
+  gpu_threadResults[idx] = leftPortionThreaded(perThreadRuns,k2,j,d);
+}
+
 //Bailey–Borwein–Plouffe Formula 16^d x Sj
 double bbpf16jsd(int j, int d)
   {
@@ -94,20 +100,21 @@ double bbpf16jsd(int j, int d)
     int noOfThreads = 1400;//For Vega20, 700 was used for Hawaii
     int perThreadRuns = 1000;
     double threadResults[noOfThreads];// For storing results from threads
-    std::generate_n(threadResults,noOfThreads,[]() {return (int)0;}); //Fill 
-    hc::array_view<double,1> gpu_threadResults(noOfThreads,threadResults);
+    std::generate_n(threadResults,noOfThreads,[]() {return (int)0;}); //Fill
+    double *gpu_threadResults;
+    hipMalloc(&gpu_threadResults,noOfThreads*sizeof(double));
+
     //Left Portion
     int k = 0;
     while (k < d)
     {
       if (k + (perThreadRuns*noOfThreads) < d)//Only make threads for k up to less than d
       {
-        hc::parallel_for_each(gpu_threadResults.get_extent(), [=] (hc::index<1> idx) [[hc]] //create and execute (noOfThreads) threads
-        {
-          int k2 = k+(idx[0]*perThreadRuns); //Thread 0 starts at k+0, thread 1 at k+(1*perThreadRuns) &c.
-          gpu_threadResults[idx] = leftPortionThreaded(perThreadRuns,k2,j,d);
-        }
-        );
+        //create and execute (noOfThreads) threads
+        hipLaunchKernelGGL(kern,dim3(80),dim3(20),0,0,gpu_threadResults,perThreadRuns,j,d,k);
+        hipMemcpy(threadResults,gpu_threadResults,noOfThreads*sizeof(double),hipMemcpyDefault);
+
+
         k = k + perThreadRuns*noOfThreads; //We need to run (perThreadRuns) results on each thread because the thread overhead is much to great to run just 1
         for (int i2 = noOfThreads-1; i2 > -1;i2--) //fetch results from all threads - count backwards because last thread executed will be slowest (higher numbers)
         {
@@ -160,14 +167,12 @@ void toHex(char *out, double *in)
 
 int main() {
   std::cout << "Bailey–Borwein–Plouffe Formula for Pi" << std::endl;
-  std::cout << "Built: " << __DATE__ << " " << __TIME__ << " with HCC Version: " << __hcc_major__ << "." << __hcc_minor__ << "." << __hcc_patchlevel__ << std::endl << std::endl;
-  hc::accelerator GPUdevice = hc::accelerator(); //Get default accelerator, this is always the best device - static std::vector<accelerator> hc::accelerator::get_all() to get a list of all
-  std::wcout << "-------- Detected HC Device Details --------" << std::endl  
-  << "          Path: " << GPUdevice.get_device_path() << std::endl
-  << "       Version: " << GPUdevice.get_version() << std::endl
-  << "   Description: " << GPUdevice.get_description() << std::endl
-  << "     Total RAM: " << GPUdevice.get_dedicated_memory()/pow(1024,2) << " (MB)" << std::endl //RAM is shown is MB output from API is bytes
-  << " Compute Units: " << GPUdevice.get_cu_count() << std::endl << std::endl;
+  std::cout << "Built: " << __DATE__ << " " << __TIME__ << " with HIP Version: " << HIP_VERSION_MAJOR << "." << HIP_VERSION_MINOR << "." << HIP_VERSION_PATCH << std::endl << std::endl;
+  hipDeviceProp_t GPUdevice; hipGetDeviceProperties(&GPUdevice, 0);
+  std::wcout << "-------- Detected HIP Device Details --------" << std::endl
+  << "          Name: " << GPUdevice.name << std::endl
+  << "     Total RAM: " << GPUdevice.totalGlobalMem/pow(1024,2) << " (MB)" << std::endl //RAM is shown is MB output from API is bytes
+  << " Compute Units: " << GPUdevice.multiProcessorCount << std::endl << std::endl;
   double piDec;
   int placeArr = 10000000; //Accurate to 10000000
   bbpfCalc(&piDec,&placeArr);  
