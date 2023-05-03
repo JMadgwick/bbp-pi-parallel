@@ -1,5 +1,5 @@
-// Parallel Implementation of the Bailey–Borwein–Plouffe Formula for Pi
-// Copyright (C) 2018 J. Madgwick
+// Parallel Implementation of the Bailey–Borwein–Plouffe Formula for Pi (Improved Program)
+// Copyright (C) 2023 J. Madgwick
 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -14,13 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#include <algorithm>
 #include <iostream>
 #include <cmath>
-#include <string>
-//for printout accuracy
-#include <limits>
-#include <iomanip>
 //Header files for the HIP API
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
@@ -51,7 +46,7 @@ __host__ __device__ double expoMod(double n, double k)
     double r = 1;
 
     //Loop by the number of Binary positions
-    for (int i = 0; i <= bitsneeded; i++) 
+    for (int i = 0; i <= bitsneeded; i++)
     {
       if (n>=t) // if n ≥ t then
       {
@@ -97,10 +92,11 @@ double bbpf16jsd(int j, int d)
     double s = .0;
     double numerator,denominator;
     double term;
-    int noOfThreads = 1400;//For Vega20, 700 was used for Hawaii
+    int blocks = 80;
+    int threadsPerBlock = 60;
+    int noOfThreads= blocks * threadsPerBlock;
     int perThreadRuns = 1000;
     double threadResults[noOfThreads];// For storing results from threads
-    std::generate_n(threadResults,noOfThreads,[]() {return (int)0;}); //Fill
     double *gpu_threadResults;
     hipMalloc(&gpu_threadResults,noOfThreads*sizeof(double));
 
@@ -110,13 +106,12 @@ double bbpf16jsd(int j, int d)
     {
       if (k + (perThreadRuns*noOfThreads) < d)//Only make threads for k up to less than d
       {
-        //create and execute (noOfThreads) threads
-        hipLaunchKernelGGL(kern,dim3(80),dim3(20),0,0,gpu_threadResults,perThreadRuns,j,d,k);
+        // Launch HIP Kernel, then copy results from GPU to CPU
+        hipLaunchKernelGGL(kern,dim3(blocks),dim3(threadsPerBlock),0,0,gpu_threadResults,perThreadRuns,j,d,k);
         hipMemcpy(threadResults,gpu_threadResults,noOfThreads*sizeof(double),hipMemcpyDefault);
 
-
         k = k + perThreadRuns*noOfThreads; //We need to run (perThreadRuns) results on each thread because the thread overhead is much to great to run just 1
-        for (int i2 = noOfThreads-1; i2 > -1;i2--) //fetch results from all threads - count backwards because last thread executed will be slowest (higher numbers)
+        for (int i2 = 0; i2 < noOfThreads;i2++)
         {
           s = s + gpu_threadResults[i2];
           s = s - static_cast<int>(s);
@@ -132,7 +127,7 @@ double bbpf16jsd(int j, int d)
       }
     }
     //Right Portion
-    for (int k = d; k <= d+100; k++) 
+    for (int k = d; k <= d+100; k++)
     {
       numerator = pow(16, d - k);
       denominator = 8 * k + j;
@@ -165,7 +160,7 @@ void toHex(char *out, double *in)
   }
 }
 
-int main() {
+int main(int argc, char *argv[]) {
   std::cout << "Bailey–Borwein–Plouffe Formula for Pi" << std::endl;
   std::cout << "Built: " << __DATE__ << " " << __TIME__ << " with HIP Version: " << HIP_VERSION_MAJOR << "." << HIP_VERSION_MINOR << "." << HIP_VERSION_PATCH << std::endl << std::endl;
   hipDeviceProp_t GPUdevice; hipGetDeviceProperties(&GPUdevice, 0);
@@ -173,12 +168,11 @@ int main() {
   << "          Name: " << GPUdevice.name << std::endl
   << "     Total RAM: " << GPUdevice.totalGlobalMem/pow(1024,2) << " (MB)" << std::endl //RAM is shown is MB output from API is bytes
   << " Compute Units: " << GPUdevice.multiProcessorCount << std::endl << std::endl;
+  int placeNo = (argc >= 2) && (std::atoi(argv[1]) > 0) ? std::atoi(argv[1]) : 10000000; //Accurate to 10000000
+  std::cout << "Calculating Position: " << placeNo << std::endl;
   double piDec;
-  int placeArr = 10000000; //Accurate to 10000000
-  bbpfCalc(&piDec,&placeArr);  
-  std::cout << "Position: " << placeArr << std::endl;
-  std::cout << "Pi Estimation Decimal: " << std::setprecision (std::numeric_limits<long double>::digits10 + 2) << (piDec) << std::endl;
-  char hexOutput[] = "0000000000000"; //Needs to be initialised else random data is left over at the end once its been filled
+  bbpfCalc(&piDec, &placeNo);
+  char hexOutput[] = "000000000";
   toHex(hexOutput, &piDec);
   std::cout << "Pi Estimation Hex: " << hexOutput << std::endl;
 }

@@ -1,5 +1,5 @@
 // Parallel Implementation of the Bailey–Borwein–Plouffe Formula for Pi (Improved Program)
-// Copyright (C) 2020 J. Madgwick
+// Copyright (C) 2023 J. Madgwick
 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -14,15 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#include <algorithm>
 #include <iostream>
 #include <cmath>
-#include <string>
 //Multithreading
 #include <thread>
-#include <future>
 
-uint noOfThreads = 1;
+uint noOfThreads;
 
 //Left-Right Binary algorithm for exponentiation with Modulo 16^n mod k
 double expoMod(double n, double k)
@@ -50,7 +47,7 @@ double expoMod(double n, double k)
     double r = 1;
 
     //Loop by the number of Binary positions
-    for (int i = 0; i <= bitsneeded; i++) 
+    for (int i = 0; i <= bitsneeded; i++)
     {
       if (n>=t) // if n ≥ t then
       {
@@ -120,7 +117,7 @@ double bbpf16jsd(int j, int d)
       }
     }
     //Right Portion
-    for (int k = d; k <= d+100; k++) 
+    for (int k = d; k <= d+100; k++)
     {
       numerator = pow(16, d - k);
       denominator = 8 * k + j;
@@ -161,7 +158,7 @@ int main(int argc, char *argv[]) {
   std::cout << "Calculating Position: " << (placeNo + 1) << ", Using " << noOfThreads << " CPU Threads" << std::endl;
   double piArr;
   bbpfCalc(&piArr, &placeNo);
-  char hexOutput[] = "000000000"; //Needs to be initialised else random data is left over at the end once its been filled
+  char hexOutput[] = "000000000";
   toHex(hexOutput, &piArr);
   std::cout << "Pi Estimation Hex: " << hexOutput << std::endl;
 }
