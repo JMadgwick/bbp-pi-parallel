@@ -1,44 +1,56 @@
-## bbpi - Calculate Pi Hex Digits in Parallel
-**bbpi** is a simple program to calculate Pi Hex Digits in parallel, it uses the Bailey Borwein Plouffe formula.
+## bbp-pi-parallel - Calculate Pi Hex Digits in Parallel
+This repo contains a simple program to calculate Pi Hex Digits in parallel, it uses the Bailey Borwein Plouffe formula.
 
-It is a multi-threaded program and currently it runs on CPUs. It used to run on some AMD GPUs (via the HC API) but that has now been [**Deprecated**](https://github.com/RadeonOpenCompute/hcc#deprecation-notice).
+It is a multi-threaded program which runs on CPUs and GPUs. It's an updated version of [bbpi](https://github.com/JMadgwick/bbpi/) which had not been updated in a while.
 
-#### Update 
-The AMD HC GPU API has [**been Deprecated**](https://github.com/RadeonOpenCompute/hcc#deprecation-notice). It will not be supported in future ROCm releases and the HC program in this repo will no longer work with ROCm versions past _2.2_ ROCm _1.9_ has support for HC and is the last version supporting Hawaii GPUs (which I used to build this program) and so I would recmend using 1.9 if you want to use the HC GPU version.
-
-#### How does it work?  
+#### How does it work?
 Take a look at my [blog](http://madgwick.xyz/bbp-pi-parallel-calculation.php) where there's further information and a link to the paper containing the algorithms I used.
 
 #### What does it do?
-By default it computes the 10 Millionth(10^7) hexadecimal digit of Pi (plus a few after that). And it doesn't take very long to do it, sub 10 seconds and fewer than 3 seconds with a good fast CPU. It can also run on some AMD GPUs, an R9 290 (from 2013) takes only ~1.5 secs to compute to the same accuracy.
+By default it computes the 10 Millionth(10^7) hexadecimal digit of Pi (plus a few after that). And it doesn't take very long to do it either (see table below).
 
-#### How can I run it?
-The easiest way is by downloading a release and running that. The other way is by compiling it yourself. This allows you to change the targeted hexadecimal place. You can also compile with `march=native` to reduce runtimes (by a little bit).
+##### Usage
+The CPU program optionally accepts two arguments, digit to calculate and number of threads to use (default all available). The GPU program accepts only digit to calculate.
 
-##### Build Instructions (CPU)
-A compiler supporting C++11 is required.
+##### Limitations
+Both CPU and GPU versions of the program are limited by precision to calculating only the first 10^7 digits. Double precision (64-bit) floating point is used.
+Most GPUs have very poor performance for 64-bit floating point operations compared with 32-bit operations. As such, the CPU program will usually be quicker. See my blog for more info.
+For the CPU program, changing the code from `double` to `long double` allows 80-bit precision to be used (on x86). This will be slower than 64-bit, on AMD Zen 2 it runs 3 times slower.
+Using 80-bit precision allows for the Pi Hex digits at 10^8 (one hundred million) to be calculated.
 
-On GNU/Linux:  
-`g++ -pthread -std=c++11 -Ofast bbp-pi-parallel-cpu.cpp -o cpubbp -lm -lpthread`    
-For a little more info see [BUILDING-LINUX](https://github.com/JMadgwick/bbpi/blob/master/BUILDING-LINUX).
+Most hardware doesn't support sufficient precision for digits greater than 10^8. Software can be used to implement greater precision (e.g. 128-bit), but this is very slow.
+[GCC libquadmath](https://gcc.gnu.org/onlinedocs/libquadmath/) is one library which can be used for this, [GNU MPFR](https://www.mpfr.org/) is another.
+A system which calculated 10^8 digits in 25 seconds (using `long double`), took an hour and a quarter to calculate the one billionth (10^9) digit (using `__float128`), which is 178x longer!
 
-On Windows:   
-`cl /EHsc /O2 bbp-pi-parallel-cpu.cpp`   
-For Windows I would recommend using clang instead because the binaries it makes are much faster than cl. For more info and some runtime speed comparisons see [BUILDING-WIN10](https://github.com/JMadgwick/bbpi/blob/master/BUILDING-WIN10.
+#### Building
 
-If for some reason `std::thread::hardware_concurrency()` is not supported properly and the number of threads is not detected then you should be able to replace all references to it with an integer. You could also do this if you wanted to run fewer/more threads etc.
+##### CPU
+A compiler supporting C++11 is required. Use `march=native` to improve performance. I've also found clang produces quicker code than GCC.
 
-##### Build Instructions (GPU)
-This uses AMDs [**now Deprecated**](https://github.com/RadeonOpenCompute/hcc#deprecation-notice) HC Language. [ROCm](https://github.com/RadeonOpenCompute/ROCm) **version 1.9**_ (and potentially some older but NOT newer versions)_ must be installed and the GPU used must be supported by HCC (gfx701,gfx803, gfx900,gfx906). 
-Build command: ``hcc `hcc-config --cxxflags --ldflags` -Ofast bbp-pi-parallel-gpu.cpp -o gpubbp``
+`c++ -pthread -lm -std=c++11 -march=native -Ofast bbp-pi-parallel-cpu.cpp -o cpubbp.out`
 
-##### The Files
-+ bbp-pi-parallel-cpu.cpp  
+##### GPU
+The {HIPCC Compiler](https://github.com/ROCm-Developer-Tools/HIPCC) is required. See the [AMD ROCm Compiler Reference Guide](https://docs.amd.com/bundle/ROCm-Compiler-Reference-Guide-v5.5/page/Introduction_to_Compiler_Reference_Guide.html) for more information.
+A supported GPU and its runtime is also required. For AMD this will be the HIP runtime, for Nvidia the propriatary driver and CUDA must be installed.
+
+`hipcc bbp-pi-parallel-gpu.cpp -o gpubbp.out`
+
+#### The Files
++ bbp-pi-parallel-cpu.cpp
 This is the code for the multi-threaded CPU implementation.
-+ bbp-pi-parallel-gpu.cpp   
-This is the code for the HC GPU implementation.
++ bbp-pi-parallel-gpu.cpp
+This is the code for the HIP GPU implementation.
 
+#### Performance
 
-###### The program in action
-Here is a video demonstrating an earlier build of the CPU and GPU implementation. CPU: Xeon E3-1230v2 GPU: AMD R9 290
-[![Alt text](https://img.youtube.com/vi/kC9i8Almlbg/0.jpg)](https://www.youtube.com/watch?v=kC9i8Almlbg)
+These are some stats for CPUs/GPUs I have tested the program with.
+
+| Digit | Time | Device |
+| ---- | ------ | --------------- |
+| 10^7 | 0.619 | Radeon VII |
+| 10^7 | 0.619 | Ryzen 3700X |
+| 10^7 | 2.444 | Xeon E5-2640 v3 |
+| 10^8 | 14.542 | Ryzen 3700X |
+| 10^8 | 23.214 | Xeon E5-2640 v3 |
+
+The GPU program can (and should) be tuned for the characteristics for the GPU it's run on. This can be done by adjusting the `blocks`, `threadsPerBlock` & `perThreadRuns` variables.
