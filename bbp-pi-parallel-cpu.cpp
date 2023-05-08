@@ -16,56 +16,56 @@
 
 #include <iostream>
 #include <cmath>
-//Multithreading
+// Multithreading
 #include <thread>
 
 uint noOfThreads;
 
-//Left-Right Binary algorithm for exponentiation with Modulo 16^n mod k
+// Left-Right Binary algorithm for exponentiation with Modulo 16^n mod k
 double expoMod(double n, double k)
   {
-    static int init = 0;//Store whether table initialised
-    static int pwrtbl[64];//table to store powers of 2
-    static int highestpwrtblpwr = 0;//after init, points to largest value in the table, which is <= n
-    while (!init) //Find largest power needed, as n counts down, do this only once
+    static int init = 0; // Store whether table initialised
+    static int pwrtbl[64]; // Table to store powers of 2
+    static int highestpwrtblpwr = 0; // After init, points to largest value in the table, which is <= n
+    while (!init) // Find largest power needed, as n counts down, do this only once
     {
-      pwrtbl[0] = 1; //In theory first can be 0 but in practice this function is only called if n > 0, in which case greatest power is 1 or more
-      while (pwrtbl[highestpwrtblpwr] < n) //used instead of for loop in order to check before iterating
+      pwrtbl[0] = 1; // In theory first can be 0 but in practice this function is only called if n > 0, in which case greatest power is 1 or more
+      while (pwrtbl[highestpwrtblpwr] < n) // Used instead of for loop in order to check before iterating
       {
-        pwrtbl[highestpwrtblpwr+1] = pwrtbl[highestpwrtblpwr] * 2; //only generates up to and including n, nothing larger
+        pwrtbl[highestpwrtblpwr+1] = pwrtbl[highestpwrtblpwr] * 2; // Only generates up to and including n, nothing larger
         highestpwrtblpwr++;
       }
-      init = 1; //set table as initialised
+      init = 1; // Set table as initialised
     }
 
-    int bitsneeded = 0;//The number of binary positions and the location in the table of the highest needed power
-    for (; pwrtbl[bitsneeded]<n;bitsneeded++);//Move through table to find position of the largest power of two < n
-    if (pwrtbl[bitsneeded]!=n){bitsneeded--;}//because the increment is applied before the condition check, we need to decrement by one, unless the item was equal to n
+    int bitsneeded = 0; // The number of binary positions and the location in the table of the highest needed power
+    for (; pwrtbl[bitsneeded]<n;bitsneeded++); // Move through table to find position of the largest power of two < n
+    if (pwrtbl[bitsneeded]!=n){bitsneeded--;} // Because the increment is applied before the condition check, we need to decrement by one, unless the item was equal to n
 
-    //First set t to be the largest power of two such that t ≤ n, and set r = 1.
+    // First set t to be the largest power of two such that t ≤ n, and set r = 1.
     int t = pwrtbl[bitsneeded];
     double r = 1;
 
-    //Loop by the number of Binary positions
+    // Loop by the number of Binary positions
     for (int i = 0; i <= bitsneeded; i++)
     {
       if (n>=t) // if n ≥ t then
       {
-        r = r * 16.0;// r ← br
-        r = r - static_cast<int>(r/k)*k;// r ← r mod k
-        n = n - t;// n ← n − t
+        r = r * 16.0; // r ← br
+        r = r - static_cast<int>(r/k)*k; // r ← r mod k
+        n = n - t; // n ← n − t
       }
-      t = t/2;// t ← t/2
+      t = t/2; // t ← t/2
       if (t>=1) // if t ≥ 1 then
       {
-        r = r * r;// r ← r^2
-        r = r - static_cast<int>(r/k)*k;// r ← r mod k
+        r = r * r; // r ← r^2
+        r = r - static_cast<int>(r/k)*k; // r ← r mod k
       }
     }
     return r;
   }
 
-//Left Portion for one thread - just does one term
+// Left Portion for one thread - just does one term
 void leftPortionThreaded(double *threadResult, int k, int j, int d)
 {
   int kinit = k;
@@ -81,32 +81,32 @@ void leftPortionThreaded(double *threadResult, int k, int j, int d)
   *threadResult = s;
 }
 
-//Bailey–Borwein–Plouffe Formula 16^d x Sj
+// Bailey–Borwein–Plouffe Formula 16^d x Sj
 double bbpf16jsd(int j, int d)
   {
     double s = .0;
     double numerator,denominator;
     double term;
-    std::thread *threadArray = new std::thread[noOfThreads];// Array with the number of threads avalible
-    double *threadResults = new double[noOfThreads];// For storing results from threads
-    //Left Portion
+    std::thread *threadArray = new std::thread[noOfThreads]; // Array with the number of threads avalible
+    double *threadResults = new double[noOfThreads]; // For storing results from threads
+    // Left Portion
     int k = 0;
     while (k < d)
     {
-      if (k + (100000*noOfThreads) < d)//Only make threads for k up to less than d
+      if (k + (100000*noOfThreads) < d) // Only make threads for k up to less than d
       {
-        for (uint i1 = 0; i1 < noOfThreads;i1++) //create and execute (noOfThreads) threads
+        for (uint i1 = 0; i1 < noOfThreads;i1++) // Create and execute (noOfThreads) threads
         {
           threadArray[i1] = std::thread(leftPortionThreaded,&threadResults[i1],k,j,d);
-          k = k + 100000; //We need to run 100000 result on each thread because the thread overhead is much to great to run just 1
+          k = k + 100000; // We need to run 100000 result on each thread because the thread overhead is much to great to run just 1
         }
-        for (int i2 = noOfThreads-1; i2 > -1;i2--) //fetch results from all threads - count backwards because last thread executed will be slowest (higher numbers)
+        for (int i2 = noOfThreads-1; i2 > -1;i2--) // Fetch results from all threads - count backwards because last thread executed will be slowest (higher numbers)
         {
           threadArray[i2].join();
           s = s + threadResults[i2];
           s = s - static_cast<int>(s);
         }
-      } else //if we are almost done and k + noOfThreads > d then do the last few terms single threaded
+      } else // If we are almost done and k + noOfThreads > d then do the last few terms single threaded
       {
         denominator = 8 * k + j;
         numerator = expoMod(d - k, denominator); // Binary algorithm for exponentiation with Modulo must be used becuase otherwise 16^(d-k) can be very large and overflows
@@ -116,7 +116,7 @@ double bbpf16jsd(int j, int d)
         k++;
       }
     }
-    //Right Portion
+    // Right Portion
     for (int k = d; k <= d+100; k++)
     {
       numerator = pow(16, d - k);
@@ -129,7 +129,7 @@ double bbpf16jsd(int j, int d)
     return s;
   }
 
-//Bailey–Borwein–Plouffe Formula Calculation
+// Bailey–Borwein–Plouffe Formula Calculation
 void bbpfCalc(double *pidec,int *place)
   {
     int tempn = *place;
@@ -139,13 +139,13 @@ void bbpfCalc(double *pidec,int *place)
     *pidec = result;
   }
 
-void toHex(char *out, double *in) //Note the pointer '*out' points to hexOutput[] (char[]) in main(). Not possible to return char[] in C/C++
+void toHex(char *out, double *in)
 {
   char hexNumbers[] = "0123456789ABCDEF";
 
   for (int i = 0; i <= 8;i++)
   {
-    *in = 16.0 * (*in - static_cast<int>(*in));
+    *in = 16.0 * (*in - std::floor(*in));
     out[i] = hexNumbers[static_cast<int>(*in)];
   }
 }
@@ -153,7 +153,7 @@ void toHex(char *out, double *in) //Note the pointer '*out' points to hexOutput[
 int main(int argc, char *argv[]) {
   std::cout << "Bailey–Borwein–Plouffe Formula for Pi" << std::endl;
   std::cout << "Built: " << __DATE__ << " " << __TIME__ << std::endl << std::endl;
-  int placeNo = (argc >= 2) && (std::atoi(argv[1]) > 0) ? std::atoi(argv[1]) - 1 : 10000000;
+  int placeNo = (argc >= 2) && (std::atoi(argv[1]) > 0) ? std::atoi(argv[1]) - 1 : 10000000 - 1; // Accurate to 10000000
   noOfThreads = (argc >= 3) && (std::atoi(argv[2]) > 0) ? static_cast<uint>(std::atoi(argv[2])) : std::thread::hardware_concurrency();
   std::cout << "Calculating Position: " << (placeNo + 1) << ", Using " << noOfThreads << " CPU Threads" << std::endl;
   double piArr;

@@ -16,55 +16,55 @@
 
 #include <iostream>
 #include <cmath>
-//Header files for the HIP API
+// Header files for the HIP API
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
 
-//Left-Right Binary algorithm for exponentiation with Modulo 16^n mod k
+// Left-Right Binary algorithm for exponentiation with Modulo 16^n mod k
 __host__ __device__ double expoMod(double n, double k)
   {
-    static int init = 0;//Store whether table initialised
-    static int pwrtbl[32];//table to store powers of 2
-    static int highestpwrtblpwr = 0;//after init, points to largest value in the table, which is <= n
-    while (!init) //Find largest power needed, as n counts down, do this only once
+    static int init = 0; // Store whether table initialised
+    static int pwrtbl[32]; // Table to store powers of 2
+    static int highestpwrtblpwr = 0; // After init, points to largest value in the table, which is <= n
+    while (!init) // Find largest power needed, as n counts down, do this only once
     {
-      pwrtbl[0] = 1; //In theory first can be 0 but in practice this function is only called if n > 0, in which case greatest power is 1 or more
-      while (pwrtbl[highestpwrtblpwr] < n) //used instead of for loop in order to check before iterating
+      pwrtbl[0] = 1; // In theory first can be 0 but in practice this function is only called if n > 0, in which case greatest power is 1 or more
+      while (pwrtbl[highestpwrtblpwr] < n) // Used instead of for loop in order to check before iterating
       {
-        pwrtbl[highestpwrtblpwr+1] = pwrtbl[highestpwrtblpwr] * 2; //only generates up to and including n, nothing larger
+        pwrtbl[highestpwrtblpwr+1] = pwrtbl[highestpwrtblpwr] * 2; // Only generates up to and including n, nothing larger
         highestpwrtblpwr++;
       }
-      init = 1; //set table as initialised
+      init = 1; // Set table as initialised
     }
 
-    int bitsneeded = 0;//The number of binary positions and the location in the table of the highest needed power
-    for (; pwrtbl[bitsneeded]<n;bitsneeded++);//Move through table to find position of the largest power of two < n
-    if (pwrtbl[bitsneeded]!=n){bitsneeded--;}//because the increment is applied before the condition check, we need to decrement by one, unless the item was equal to n
+    int bitsneeded = 0; // The number of binary positions and the location in the table of the highest needed power
+    for (; pwrtbl[bitsneeded]<n;bitsneeded++); // Move through table to find position of the largest power of two < n
+    if (pwrtbl[bitsneeded]!=n){bitsneeded--;} // Because the increment is applied before the condition check, we need to decrement by one, unless the item was equal to n
 
-    //First set t to be the largest power of two such that t ≤ n, and set r = 1.
+    // First set t to be the largest power of two such that t ≤ n, and set r = 1.
     int t = pwrtbl[bitsneeded];
     double r = 1;
 
-    //Loop by the number of Binary positions
+    // Loop by the number of Binary positions
     for (int i = 0; i <= bitsneeded; i++)
     {
       if (n>=t) // if n ≥ t then
       {
-        r = r * 16.0;// r ← br
-        r = r - static_cast<int>(r/k)*k;// r ← r mod k
-        n = n - t;// n ← n − t
+        r = r * 16.0; // r ← br
+        r = r - static_cast<int>(r/k)*k; // r ← r mod k
+        n = n - t; // n ← n − t
       }
-      t = t/2;// t ← t/2
+      t = t/2; // t ← t/2
       if (t>=1) // if t ≥ 1 then
       {
-        r = r * r;// r ← r^2
-        r = r - static_cast<int>(r/k)*k;// r ← r mod k
+        r = r * r; // r ← r^2
+        r = r - static_cast<int>(r/k)*k; // r ← r mod k
       }
     }
     return r;
   }
 
-//Left Portion for one thread - just does one term
+// Left Portion for one thread - just does one term
 __device__ double leftPortionThreaded(int terms, int k, int j, int d)
 {
   int kinit = k;
@@ -82,11 +82,11 @@ __device__ double leftPortionThreaded(int terms, int k, int j, int d)
 
 __global__ void kern(double *gpu_threadResults, int perThreadRuns, int j, int d, int k){
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  int k2 = k+(idx*perThreadRuns); //Thread 0 starts at k+0, thread 1 at k+(1*perThreadRuns) &c.
+  int k2 = k+(idx*perThreadRuns); // Thread 0 starts at k+0, thread 1 at k+(1*perThreadRuns) &c.
   gpu_threadResults[idx] = leftPortionThreaded(perThreadRuns,k2,j,d);
 }
 
-//Bailey–Borwein–Plouffe Formula 16^d x Sj
+// Bailey–Borwein–Plouffe Formula 16^d x Sj
 double bbpf16jsd(int j, int d)
   {
     double s = .0;
@@ -95,28 +95,28 @@ double bbpf16jsd(int j, int d)
     int blocks = 80;
     int threadsPerBlock = 60;
     int noOfThreads= blocks * threadsPerBlock;
-    int perThreadRuns = 1000;
-    double threadResults[noOfThreads];// For storing results from threads
+    int perThreadRuns = 2000;
+    double threadResults[noOfThreads]; // For storing results from threads
     double *gpu_threadResults;
     hipMalloc(&gpu_threadResults,noOfThreads*sizeof(double));
 
-    //Left Portion
+    // Left Portion
     int k = 0;
     while (k < d)
     {
-      if (k + (perThreadRuns*noOfThreads) < d)//Only make threads for k up to less than d
+      if (k + (perThreadRuns*noOfThreads) < d) // Only make threads for k up to less than d
       {
         // Launch HIP Kernel, then copy results from GPU to CPU
         hipLaunchKernelGGL(kern,dim3(blocks),dim3(threadsPerBlock),0,0,gpu_threadResults,perThreadRuns,j,d,k);
         hipMemcpy(threadResults,gpu_threadResults,noOfThreads*sizeof(double),hipMemcpyDefault);
 
-        k = k + perThreadRuns*noOfThreads; //We need to run (perThreadRuns) results on each thread because the thread overhead is much to great to run just 1
+        k = k + perThreadRuns*noOfThreads; // We need to run (perThreadRuns) results on each thread because the thread overhead is much to great to run just 1
         for (int i2 = 0; i2 < noOfThreads;i2++)
         {
           s = s + gpu_threadResults[i2];
           s = s - static_cast<int>(s);
         }
-      } else //if we are almost done and k + noOfThreads > d then do the last few terms single threaded
+      } else // If we are almost done and k + noOfThreads > d then do the last few terms single threaded
       {
         denominator = 8 * k + j;
         numerator = expoMod(d - k, denominator); // Binary algorithm for exponentiation with Modulo must be used becuase otherwise 16^(d-k) can be very large and overflows
@@ -126,7 +126,7 @@ double bbpf16jsd(int j, int d)
         k++;
       }
     }
-    //Right Portion
+    // Right Portion
     for (int k = d; k <= d+100; k++)
     {
       numerator = pow(16, d - k);
@@ -139,7 +139,7 @@ double bbpf16jsd(int j, int d)
     return s;
   }
 
-//Bailey–Borwein–Plouffe Formula Calculation
+// Bailey–Borwein–Plouffe Formula Calculation
 void bbpfCalc(double *pidec,int *place)
   {
     int tempn = *place;
@@ -155,7 +155,7 @@ void toHex(char *out, double *in)
 
   for (int i = 0; i <= 8;i++)
   {
-    *in = 16.0 * (*in - static_cast<int>(*in));
+    *in = 16.0 * (*in - std::floor(*in));
     out[i] = hexNumbers[static_cast<int>(*in)];
   }
 }
@@ -166,10 +166,10 @@ int main(int argc, char *argv[]) {
   hipDeviceProp_t GPUdevice; hipGetDeviceProperties(&GPUdevice, 0);
   std::wcout << "-------- Detected HIP Device Details --------" << std::endl
   << "          Name: " << GPUdevice.name << std::endl
-  << "     Total RAM: " << GPUdevice.totalGlobalMem/pow(1024,2) << " (MB)" << std::endl //RAM is shown is MB output from API is bytes
+  << "     Total RAM: " << GPUdevice.totalGlobalMem/pow(1024,2) << " (MB)" << std::endl // RAM is shown is MB output from API is bytes
   << " Compute Units: " << GPUdevice.multiProcessorCount << std::endl << std::endl;
-  int placeNo = (argc >= 2) && (std::atoi(argv[1]) > 0) ? std::atoi(argv[1]) : 10000000; //Accurate to 10000000
-  std::cout << "Calculating Position: " << placeNo << std::endl;
+  int placeNo = (argc >= 2) && (std::atoi(argv[1]) > 0) ? std::atoi(argv[1]) - 1 : 10000000 - 1; // Accurate to 10000000
+  std::cout << "Calculating Position: " << (placeNo + 1) << std::endl;
   double piDec;
   bbpfCalc(&piDec, &placeNo);
   char hexOutput[] = "000000000";
