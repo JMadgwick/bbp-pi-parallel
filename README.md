@@ -1,7 +1,7 @@
 ## bbp-pi-parallel - Calculate Pi Hex Digits in Parallel
 This repo contains a simple program to calculate Pi Hex Digits in parallel, it uses the Bailey Borwein Plouffe formula.
 
-It is a multi-threaded program which runs on CPUs and GPUs. It's an updated version of [bbpi](https://github.com/JMadgwick/bbpi/) which had not been updated in a while.
+It is a multi-threaded program which runs on CPUs and GPUs. It's a new version of [bbpi](https://github.com/JMadgwick/bbpi/) which hadn't been updated in a while.
 
 ### How does it work?
 Take a look at my [blog](http://madgwick.xyz/bbp-pi-parallel-calculation.php) where there's further information and a link to the paper containing the algorithms I used.
@@ -30,7 +30,7 @@ A compiler supporting C++11 is required. Use `march=native` to improve performan
 `c++ -pthread -lm -std=c++11 -march=native -Ofast bbp-pi-parallel-cpu.cpp -o cpubbp.out`
 
 #### GPU
-The {HIPCC Compiler](https://github.com/ROCm-Developer-Tools/HIPCC) is required. See the [AMD ROCm Compiler Reference Guide](https://docs.amd.com/bundle/ROCm-Compiler-Reference-Guide-v5.5/page/Introduction_to_Compiler_Reference_Guide.html) for more information.
+The [HIPCC Compiler](https://github.com/ROCm-Developer-Tools/HIPCC) is required. See the [AMD ROCm Compiler Reference Guide](https://docs.amd.com/bundle/ROCm-Compiler-Reference-Guide-v5.5/page/Introduction_to_Compiler_Reference_Guide.html) for more information.
 A supported GPU and its runtime is also required. For AMD this will be the HIP runtime, for Nvidia the propriatary driver and CUDA must be installed.
 
 `hipcc bbp-pi-parallel-gpu.cpp -o gpubbp.out`
